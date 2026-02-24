@@ -1,0 +1,464 @@
+-- 加载 WindUI 库
+local WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+
+WindUI.TransparencyValue = 0.2
+WindUI:SetTheme("Dark")
+
+-- 创建主窗口
+local Window = WindUI:CreateWindow({
+    Title = "农民飞行",
+    Icon = "bird",
+    Author = "Crim",
+    Folder = "Skeet",
+    Size = UDim2.fromOffset(700, 500),
+    Theme = "Dark",
+    SideBarWidth = 220,
+    ScrollBarEnabled = true
+})
+
+-- ========== 绕过检测（去除 warn 声音）==========
+local function isAdonisAC(table)
+    return rawget(table, "Detected")
+        and typeof(rawget(table, "Detected")) == "function"
+        and rawget(table, "RLocked")
+end
+
+for _, v in next, getgc(true) do
+    if typeof(v) == "table" and isAdonisAC(v) then
+        for i, v in next, v do
+            if rawequal(i, "Detected") then
+                local old
+                old = hookfunction(v, function(action, info, crash)
+                    if rawequal(action, "_") and rawequal(info, "_") and rawequal(crash, false) then
+                        return old(action, info, crash)
+                    end
+                    return task.wait(9e9)
+                end)
+                break
+            end
+        end
+    end
+end
+
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local args = { ... }
+    if getnamecallmethod() == "FireServer" and not checkcaller() and args[1] == "FlllD" and args[4] == false then
+        args[2] = 0
+        args[3] = 0
+    end
+    return oldNamecall(self, unpack(args))
+end)
+-- ============================================================
+
+-- ========== 公共服务 ==========
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
+local player = Players.LocalPlayer
+
+-- ========== 飞行模块 1：普通飞行 ==========
+local normalFly = {
+    enabled = false,
+    speed = 45
+}
+
+local function setupNormalFly()
+    local character = player.Character
+    if not character then return end
+    
+    local rootPart = character:WaitForChild("HumanoidRootPart")
+    local humanoid = character:WaitForChild("Humanoid")
+    
+    local function flyUpdate()
+        while normalFly.enabled and rootPart and humanoid and humanoid.Health > 0 do
+            local cam = workspace.CurrentCamera
+            local camCF = cam.CFrame
+            local lookVector = camCF.LookVector
+            local moveDirection = Vector3.new(lookVector.X, lookVector.Y, lookVector.Z).Unit
+            
+            rootPart.Velocity = moveDirection * normalFly.speed
+            
+            -- 发送网络事件（可能用于反检测）
+            local args = {
+                "__---r",
+                Vector3.zero,
+                CFrame.new(-4574, 3, -443, 0, 0, 1, 0, 1, 0, -1, 0, 0),
+                false
+            }
+            game:GetService("ReplicatedStorage"):WaitForChild("Events"):WaitForChild("__RZDONL"):FireServer(unpack(args))
+            
+            RunService.Heartbeat:Wait()
+        end
+    end
+    
+    if normalFly.enabled then
+        humanoid.PlatformStand = true
+        coroutine.wrap(flyUpdate)()
+    end
+end
+
+local function stopNormalFly()
+    normalFly.enabled = false
+    local character = player.Character
+    if character then
+        local humanoid = character:FindFirstChild("Humanoid")
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        if humanoid then
+            humanoid.PlatformStand = false
+        end
+        if rootPart then
+            rootPart.Velocity = Vector3.new(0, 0, 0)
+        end
+    end
+end
+
+player.CharacterAdded:Connect(function(character)
+    if normalFly.enabled then
+        task.wait(1)
+        setupNormalFly()
+    else
+        stopNormalFly()
+    end
+end)
+
+player.CharacterRemoving:Connect(function()
+    stopNormalFly()
+end)
+
+-- ========== 飞行模块 2：防攻击飞行 ==========
+local antiFly = {
+    enabled = false,
+    speed = 45
+}
+
+local function setupAntiFly()
+    local character = player.Character
+    if not character then return end
+    
+    local rootPart = character:WaitForChild("HumanoidRootPart")
+    local humanoid = character:WaitForChild("Humanoid")
+    
+    local function flyUpdate()
+        while antiFly.enabled and rootPart and humanoid and humanoid.Health > 0 do
+            local cam = workspace.CurrentCamera
+            local camCF = cam.CFrame
+            local lookVector = camCF.LookVector
+            local moveDirection = Vector3.new(lookVector.X, lookVector.Y, lookVector.Z).Unit
+            
+            rootPart.Velocity = moveDirection * antiFly.speed
+            
+            -- 每秒更新
+            task.wait(1)
+        end
+    end
+    
+    if antiFly.enabled then
+        humanoid.PlatformStand = true
+        coroutine.wrap(flyUpdate)()
+    end
+end
+
+local function stopAntiFly()
+    antiFly.enabled = false
+    local character = player.Character
+    if character then
+        local humanoid = character:FindFirstChild("Humanoid")
+        local rootPart = character:FindFirstChild("HumanoidRootPart")
+        if humanoid then
+            humanoid.PlatformStand = false
+        end
+        if rootPart then
+            rootPart.Velocity = Vector3.new(0, 0, 0)
+        end
+    end
+end
+
+player.CharacterAdded:Connect(function(character)
+    if antiFly.enabled then
+        task.wait(1)
+        setupAntiFly()
+    else
+        stopAntiFly()
+    end
+end)
+
+player.CharacterRemoving:Connect(function()
+    stopAntiFly()
+end)
+
+-- ========== 快捷键系统 ==========
+local Keybinds = {
+    Fly = {
+        Key = nil,          -- Enum.KeyCode 或 nil
+        ToggleObject = nil, -- 存储 Toggle 控件对象
+        Button = nil,       -- 存储快捷键按钮（用于更新文字）
+    },
+    AntiFly = {
+        Key = nil,
+        ToggleObject = nil,
+        Button = nil,
+    }
+}
+
+-- 等待按键状态
+local isWaitingForKey = false
+local waitingTarget = nil  -- "Fly" 或 "AntiFly"
+
+-- 获取按键名称的辅助函数
+local function getKeyName(keyCode)
+    if not keyCode then return "无" end
+    return keyCode.Name
+end
+
+-- 更新快捷键按钮文本
+local function updateKeybindButton(target)
+    local data = Keybinds[target]
+    if data and data.Button then
+        data.Button:SetTitle("快捷键: " .. getKeyName(data.Key))
+    end
+end
+
+-- 设置新快捷键
+local function setKeybind(target, keyCode)
+    -- 检查是否与其他快捷键冲突
+    local otherTarget = (target == "Fly" and "AntiFly") or "Fly"
+    if Keybinds[otherTarget].Key == keyCode then
+        WindUI:Notify({
+            Title = "快捷键冲突",
+            Content = "该按键已被另一个飞行模式使用",
+            Icon = "alert-triangle",
+            Duration = 2
+        })
+        return false
+    end
+    Keybinds[target].Key = keyCode
+    updateKeybindButton(target)
+    return true
+end
+
+-- 进入等待按键模式
+local function startWaitingForKey(target)
+    if isWaitingForKey then return end
+    isWaitingForKey = true
+    waitingTarget = target
+    
+    -- 显示提示
+    WindUI:Notify({
+        Title = "设置快捷键",
+        Content = "请按下任意键...",
+        Icon = "keyboard",
+        Duration = 3
+    })
+    
+    -- 临时禁用输入监听（我们自己处理）
+    -- 连接一个临时监听
+    local connection
+    connection = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+        if gameProcessed then return end  -- 游戏正在处理，忽略
+        if not isWaitingForKey then return end
+        
+        -- 只处理键盘按键
+        if input.UserInputType == Enum.UserInputType.Keyboard then
+            local keyCode = input.KeyCode
+            if keyCode ~= Enum.KeyCode.Unknown then
+                -- 设置新快捷键
+                if setKeybind(waitingTarget, keyCode) then
+                    WindUI:Notify({
+                        Title = "快捷键已设置",
+                        Content = "新快捷键: " .. keyCode.Name,
+                        Icon = "check",
+                        Duration = 1.5
+                    })
+                end
+                -- 退出等待模式
+                isWaitingForKey = false
+                waitingTarget = nil
+                connection:Disconnect()
+            end
+        end
+    end)
+    
+    -- 超时自动退出（例如10秒无操作）
+    task.delay(10, function()
+        if isWaitingForKey then
+            isWaitingForKey = false
+            waitingTarget = nil
+            connection:Disconnect()
+            WindUI:Notify({
+                Title = "设置超时",
+                Content = "未检测到按键，已取消",
+                Icon = "clock",
+                Duration = 1.5
+            })
+        end
+    end)
+end
+
+-- 全局快捷键监听（仅在非等待状态时触发切换）
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+    if gameProcessed then return end
+    if isWaitingForKey then return end  -- 正在设置快捷键，不触发切换
+    
+    if input.UserInputType == Enum.UserInputType.Keyboard then
+        local keyCode = input.KeyCode
+        
+        -- 检查飞行快捷键
+        if Keybinds.Fly.Key and keyCode == Keybinds.Fly.Key then
+            -- 切换飞行状态：通过 Toggle 对象切换
+            if Keybinds.Fly.ToggleObject then
+                -- 假设 Toggle 对象有 Toggle() 方法（切换状态）
+                -- 如果没有，则尝试用 Set(not state) 或直接调用 Callback
+                -- 这里采用调用 Toggle 对象的 Toggle 方法（如果存在）
+                if Keybinds.Fly.ToggleObject.Toggle then
+                    Keybinds.Fly.ToggleObject:Toggle()
+                else
+                    -- 否则手动取反并调用 Callback（需要知道当前状态，这里简单处理）
+                    normalFly.enabled = not normalFly.enabled
+                    if normalFly.enabled then
+                        setupNormalFly()
+                    else
+                        stopNormalFly()
+                    end
+                end
+            end
+        elseif Keybinds.AntiFly.Key and keyCode == Keybinds.AntiFly.Key then
+            if Keybinds.AntiFly.ToggleObject then
+                if Keybinds.AntiFly.ToggleObject.Toggle then
+                    Keybinds.AntiFly.ToggleObject:Toggle()
+                else
+                    antiFly.enabled = not antiFly.enabled
+                    if antiFly.enabled then
+                        setupAntiFly()
+                    else
+                        stopAntiFly()
+                    end
+                end
+            end
+        end
+    end
+end)
+
+-- ========== 创建标签页：飞行（普通）==========
+local FlyTab = Window:Tab({
+    Title = "飞行",
+    Icon = "plane",
+    Locked = false
+})
+
+-- 存储 Toggle 对象以便快捷键使用
+local flyToggle = FlyTab:Toggle({
+    Title = "启用飞行",
+    Desc = "自由飞行（每帧更新 + 网络事件）",
+    Type = "Checkbox",
+    Default = false,
+    Callback = function(state)
+        normalFly.enabled = state
+        if state then
+            setupNormalFly()
+            WindUI:Notify({
+                Title = "飞行",
+                Content = "飞行已启用（普通模式）",
+                Icon = "check",
+                Duration = 2
+            })
+        else
+            stopNormalFly()
+            WindUI:Notify({
+                Title = "飞行",
+                Content = "飞行已禁用",
+                Icon = "x",
+                Duration = 2
+            })
+        end
+    end
+})
+Keybinds.Fly.ToggleObject = flyToggle
+
+FlyTab:Slider({
+    Title = "飞行速度",
+    Step = 1,
+    Value = {
+        Min = 10,
+        Max = 200,
+        Default = 45,
+    },
+    Callback = function(value)
+        normalFly.speed = value
+    end
+})
+
+-- 添加快捷键设置按钮
+local flyKeyButton = FlyTab:Button({
+    Title = "快捷键: 无",
+    Desc = "点击设置快捷键",
+    Callback = function()
+        startWaitingForKey("Fly")
+    end
+})
+Keybinds.Fly.Button = flyKeyButton
+
+-- ========== 创建标签页：防攻击飞行 ==========
+local AntiFlyTab = Window:Tab({
+    Title = "防攻击飞行",
+    Icon = "shield",
+    Locked = false
+})
+
+local antiToggle = AntiFlyTab:Toggle({
+    Title = "启用防攻击飞行",
+    Desc = "防攻击模式（每秒更新，无网络事件）",
+    Type = "Checkbox",
+    Default = false,
+    Callback = function(state)
+        antiFly.enabled = state
+        if state then
+            setupAntiFly()
+            WindUI:Notify({
+                Title = "防攻击飞行",
+                Content = "防攻击飞行已启用",
+                Icon = "check",
+                Duration = 2
+            })
+        else
+            stopAntiFly()
+            WindUI:Notify({
+                Title = "防攻击飞行",
+                Content = "防攻击飞行已禁用",
+                Icon = "x",
+                Duration = 2
+            })
+        end
+    end
+})
+Keybinds.AntiFly.ToggleObject = antiToggle
+
+AntiFlyTab:Slider({
+    Title = "飞行速度",
+    Step = 1,
+    Value = {
+        Min = 10,
+        Max = 200,
+        Default = 45,
+    },
+    Callback = function(value)
+        antiFly.speed = value
+    end
+})
+
+-- 添加快捷键设置按钮
+local antiKeyButton = AntiFlyTab:Button({
+    Title = "快捷键: 无",
+    Desc = "点击设置快捷键",
+    Callback = function()
+        startWaitingForKey("AntiFly")
+    end
+})
+Keybinds.AntiFly.Button = antiKeyButton
+
+-- 绕过加载提示
+WindUI:Notify({
+    Title = "绕过已加载",
+    Content = "Adonis 绕过 & Namecall 钩子已应用",
+    Duration = 3
+})
